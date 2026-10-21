@@ -32,6 +32,7 @@ class ReleaseTests(unittest.TestCase):
         self.baseline_sha = 'a' * 64
         self.receipt = {'schemaVersion': 1, 'kind': 'candidate', 'tag': 'v0.1.0-rc.2',
                         'repository': b.REPO, 'site': b.SITE, 'sourceCommit': 'b' * 40,
+                        'createdAt': '2026-10-22T00:00:00+00:00',
                         'sha256': b.digest(self.archive.read_bytes()), 'bytes': self.archive.stat().st_size,
                         'files': {n: b.digest(data) for n, data in self.files.items()},
                         'automatedChecks': {'npmCheck': True, 'package': True, 'releaseGuards': True},
@@ -101,11 +102,25 @@ class ReleaseTests(unittest.TestCase):
             receipt['automatedChecks'][key] = False
             with self.assertRaisesRegex(ValueError, 'automated'):
                 b.verify_receipt(self.archive, receipt)
+
+    def test_prepared_but_unreviewed_receipt_is_refused_clearly(self):
+        receipt = dict(self.receipt, qa=None)
+        with self.assertRaisesRegex(ValueError, 'manual QA is incomplete'):
+            b.verify_receipt(self.archive, receipt)
         for key in b.QA:
             receipt = copy.deepcopy(self.receipt)
             receipt['qa']['checks'][key] = False
             with self.assertRaisesRegex(ValueError, 'manual QA'):
                 b.verify_receipt(self.archive, receipt)
+
+    def test_private_or_unexpected_receipt_fields_refused(self):
+        receipt = dict(self.receipt, privateNotes='not for publication')
+        with self.assertRaisesRegex(ValueError, 'public fields'):
+            b.verify_receipt(self.archive, receipt)
+        receipt = copy.deepcopy(self.receipt)
+        receipt['qa']['rawEvidence'] = 'must remain local'
+        with self.assertRaisesRegex(ValueError, 'only check results'):
+            b.verify_receipt(self.archive, receipt)
 
     def test_baseline_cannot_be_forged(self):
         baseline = copy.deepcopy(self.receipt)

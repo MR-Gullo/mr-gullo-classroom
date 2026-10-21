@@ -126,12 +126,19 @@ def verify_receipt(archive, receipt, baseline=None):
                 "Baseline must exactly match the trusted baseline in the workflow")
     else:
         require(receipt.get("kind") == "candidate", "Unknown receipt type")
+        require(set(receipt) == {"schemaVersion", "kind", "tag", "repository", "site",
+                                "sourceCommit", "createdAt", "sha256", "bytes", "files",
+                                "automatedChecks", "rollbackTo", "qa"},
+                "Receipt contains unexpected or missing public fields")
         require(receipt.get("automatedChecks") == {"npmCheck": True, "package": True,
                                                   "releaseGuards": True},
                 "Full automated checks have not passed")
-        require(receipt.get("qa", {}).get("checks") == {n: True for n in QA},
+        qa = receipt.get("qa")
+        require(isinstance(qa, dict) and qa.get("checks") == {n: True for n in QA},
                 "Artifact-bound manual QA is incomplete")
-        require(re.fullmatch(r"[a-f0-9]{64}", receipt.get("qa", {}).get("evidenceSha256", "")),
+        require(set(qa) == {"checks", "evidenceSha256"},
+                "QA receipt may contain only check results and an evidence fingerprint")
+        require(re.fullmatch(r"[a-f0-9]{64}", qa.get("evidenceSha256", "")),
                 "Missing private QA evidence fingerprint")
         require(re.fullmatch(r"[a-f0-9]{64}", receipt.get("rollbackTo", "")),
                 "Missing tested rollback target")
