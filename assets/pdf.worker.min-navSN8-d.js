@@ -1,0 +1,1 @@
+var e=`/mr-gullo-classroom/assets/pdf.worker.min-CjEcRF4W.mjs`;export{e as default};

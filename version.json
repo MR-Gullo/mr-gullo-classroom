@@ -1,0 +1,20 @@
+{
+  "version": "0.1.0-rc.1",
+  "channel": "tester-prerelease",
+  "sourceCommit": "7e6af2634f1469e6db51cea590d7a72cb63461a5",
+  "basePath": "/mr-gullo-classroom/",
+  "url": "https://mr-gullo.github.io/mr-gullo-classroom/",
+  "builtAt": "2026-10-21T23:20:29.027107+00:00",
+  "sha256": "2dfe1a22b51163eb4959c1548030187f33d579ecfb841ee9141e0c3dd9ace77f",
+  "archiveBytes": 9794091,
+  "checks": [
+    "TypeScript and production build passed",
+    "PWA package checks passed",
+    "ZIP CRC passed"
+  ],
+  "limits": [
+    "Windows and Safari platform verification pending",
+    "Physical audio verification pending",
+    "Prior deeper UI audit evidence is bound to preceding source builds"
+  ]
+}
