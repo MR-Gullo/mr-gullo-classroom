@@ -13,3 +13,9 @@ Version history and hosting downloads: https://github.com/MR-Gullo/mr-gullo-clas
 The release ZIP is a static hosting bundle for the same app on both platforms. It is not a Windows or Mac executable installer. A downloaded index.html cannot be used directly from disk.
 
 Current channel: 0.1.0-rc.1 tester prerelease. This is not production sign-off. See each release's verification limits.
+
+## Updates and rollback
+
+App changes do not deploy on push. Use the manual [Tester update workflow](https://github.com/MR-Gullo/mr-gullo-classroom/actions/workflows/tester-pages.yml). Its default is verification only. Promotion and rollback both require the owner's environment approval. Read [UPDATES.md](UPDATES.md) for candidate testing, exact artifact checks, and the rollback procedure. Never approve an update without its checks and private fictional-data QA.
+
+The live app remains v0.1.0-rc.1 until a reviewed candidate is promoted. Downloaded ZIPs and their tested receipts are retained in Releases, so rollback does not rebuild old code or rewrite Git history. Database migration recovery remains a separate requirement.

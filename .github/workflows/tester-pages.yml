@@ -1,0 +1,135 @@
+name: Tester update
+run-name: '${{ inputs.action }} ${{ inputs.release_tag }}'
+
+# No push/release trigger. Editing the repository cannot publish an app update.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Verify only, promote a reviewed candidate, or roll back
+        type: choice
+        options: [verify, promote, rollback]
+        default: verify
+        required: true
+      release_tag:
+        description: Exact tester tag, for example v0.1.0-rc.2
+        type: string
+        required: true
+      expected_live_sha:
+        description: Current live ZIP SHA-256, required for promote/rollback
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: classroom-testers
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      target_sha: ${{ steps.receipt.outputs.target_sha }}
+    steps:
+      - name: Require the trusted main workflow
+        env:
+          WORKFLOW_REF: ${{ github.ref }}
+        run: test "$WORKFLOW_REF" = refs/heads/main
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Exercise release refusal and rollback guards
+        run: python3 release-tools/test_verify_bundle.py
+      - name: Fetch and validate the exact release as data
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          MODE: ${{ inputs.action }}
+          EXPECTED_SHA: ${{ inputs.expected_live_sha }}
+        run: |
+          python3 release-tools/verify_bundle.py --download \
+            --archive incoming/mr-gullo-classroom-pwa.zip \
+            --receipt incoming/release-receipt.json \
+            --baseline release-tools/baseline.json --tag "$RELEASE_TAG" \
+            --mode "$MODE" --expected-sha "$EXPECTED_SHA" --output verified-site
+      - name: Show the exact candidate for review
+        id: receipt
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          receipt = json.loads(Path('verified-site/version.json').read_text())
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              out.write('target_sha=' + receipt['sha256'] + '\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
+              out.write('## Verified tester artifact\n\n')
+              out.write('Tag: `' + receipt['tag'] + '`\n\n')
+              out.write('ZIP SHA-256: `' + receipt['sha256'] + '`\n\n')
+              out.write('Source commit: `' + receipt['sourceCommit'] + '`\n\n')
+              out.write('Verify mode cannot deploy. Promote and rollback both require environment approval.\n')
+          PY
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: verified-site
+          retention-days: 30
+
+  deploy:
+    if: inputs.action != 'verify'
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    steps:
+      - name: Reject a stale approval after another deployment
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_live_sha }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          request = urllib.request.Request(
+              'https://mr-gullo.github.io/mr-gullo-classroom/version.json',
+              headers={'Cache-Control': 'no-cache'})
+          with urllib.request.urlopen(request, timeout=30) as response:
+              current = json.load(response)
+          if current.get('sha256') != os.environ['EXPECTED_SHA']:
+              raise SystemExit('Live version changed while awaiting approval. Re-review the update.')
+          PY
+      - uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+        id: deployment
+      - name: Verify the deployed marker
+        env:
+          TARGET_SHA: ${{ needs.verify.outputs.target_sha }}
+        run: |
+          python3 - <<'PY'
+          import json, os, time, urllib.request
+          for attempt in range(12):
+              try:
+                  request = urllib.request.Request(
+                      'https://mr-gullo.github.io/mr-gullo-classroom/version.json?run=' + os.environ['GITHUB_RUN_ID'],
+                      headers={'Cache-Control': 'no-cache'})
+                  with urllib.request.urlopen(request, timeout=15) as response:
+                      if json.load(response).get('sha256') == os.environ['TARGET_SHA']:
+                          break
+              except Exception:
+                  pass
+              time.sleep(5)
+          else:
+              raise SystemExit('Live readback failed. Inspect deployment and run the rollback workflow if needed.')
+          PY
+      - name: Publish the promoted prerelease in version history
+        if: inputs.action == 'promote'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          gh release edit "$RELEASE_TAG" --repo MR-Gullo/mr-gullo-classroom \
+            --draft=false --prerelease --latest=false
