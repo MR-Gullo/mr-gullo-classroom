@@ -69,7 +69,7 @@ jobs:
               out.write('Tag: `' + receipt['tag'] + '`\n\n')
               out.write('ZIP SHA-256: `' + receipt['sha256'] + '`\n\n')
               out.write('Source commit: `' + receipt['sourceCommit'] + '`\n\n')
-              out.write('Verify mode cannot deploy. Promote and rollback both require environment approval.\n')
+              out.write('Verify mode cannot deploy. Promote and rollback deploy automatically after verification.\n')
           PY
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
@@ -89,7 +89,7 @@ jobs:
       pages: write
       id-token: write
     steps:
-      - name: Reject a stale approval after another deployment
+      - name: Reject a stale candidate after another deployment
         env:
           EXPECTED_SHA: ${{ inputs.expected_live_sha }}
         run: |
@@ -101,7 +101,7 @@ jobs:
           with urllib.request.urlopen(request, timeout=30) as response:
               current = json.load(response)
           if current.get('sha256') != os.environ['EXPECTED_SHA']:
-              raise SystemExit('Live version changed while awaiting approval. Re-review the update.')
+              raise SystemExit('Live version changed before deployment. Recheck the update against the new baseline.')
           PY
       - uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
         id: deployment
