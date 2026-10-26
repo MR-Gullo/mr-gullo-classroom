@@ -33,6 +33,35 @@ def valid_tag(tag):
     return tag
 
 
+def inspect_release_notes(data):
+    """Accept only the small, reviewed public changelog, never arbitrary JSON."""
+    require(len(data) <= 64 * 1024, "Release notes exceed 64 KiB")
+    notes = json.loads(data)
+    require(isinstance(notes, dict) and set(notes) == {"schemaVersion", "releases"}
+            and type(notes["schemaVersion"]) is int and notes["schemaVersion"] == 1,
+            "Unexpected release notes fields")
+    releases = notes["releases"]
+    require(isinstance(releases, list) and 1 <= len(releases) <= 50,
+            "Unexpected release notes count")
+    tags = set()
+    for release in releases:
+        require(isinstance(release, dict) and set(release) == {"tag", "changes"},
+                "Unexpected release notes entry")
+        tag = valid_tag(release["tag"])
+        require(tag not in tags, "Duplicate release notes tag")
+        tags.add(tag)
+        changes = release["changes"]
+        require(isinstance(changes, list) and 1 <= len(changes) <= 30,
+                "Unexpected release changes count")
+        for change in changes:
+            require(isinstance(change, str) and 0 < len(change.strip()) <= 500
+                    and not any(ord(c) < 32 for c in change),
+                    "Release changes must be concise plain text")
+    require(b"/Users/gullo/" not in data and b"AUDIT-NEW" not in data,
+            "Private path or audit marker in release notes")
+    return notes
+
+
 class Head(HTMLParser):
     def __init__(self):
         super().__init__()
@@ -55,7 +84,8 @@ def inspect_archive(archive):
     require(archive.stat().st_size <= 32 * 1024 * 1024, "Archive exceeds 32 MiB")
     files, names = {}, set()
     root_names = {"index.html", "sw.js", "manifest.webmanifest", "_headers",
-                  "HOSTING.txt", "third-party-notices.txt", "robots.txt"}
+                  "HOSTING.txt", "third-party-notices.txt", "robots.txt",
+                  "release-notes.json"}
     with zipfile.ZipFile(archive) as z:
         require(0 < len(z.infolist()) <= 128, "Unexpected ZIP entry count")
         total = 0
@@ -82,6 +112,8 @@ def inspect_archive(archive):
                     "Uncompressed archive exceeds release limits")
             require(not info.flag_bits & 1, "Encrypted archives are unsupported")
             data = z.read(info)  # CRC checked by zipfile; bounded above before allocation.
+            if name == "release-notes.json":
+                inspect_release_notes(data)
             if name.endswith((".html", ".js", ".mjs", ".txt")):
                 require(b"/Users/gullo/" not in data and b"AUDIT-NEW" not in data,
                         "Private path or audit marker in archive")
