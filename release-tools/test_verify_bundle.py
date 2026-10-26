@@ -84,6 +84,31 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'link'):
             b.inspect_archive(self.archive)
 
+    def test_only_bounded_public_release_notes_json_is_allowed(self):
+        notes = {'schemaVersion': 1, 'releases': [
+            {'tag': 'v0.1.0-rc.28', 'changes': ['Check for updates from the sidebar.']}]}
+        self.write_zip(('release-notes.json', json.dumps(notes).encode()))
+        self.assertIn('release-notes.json', b.inspect_archive(self.archive))
+        for name in ('workspace.json', 'assets/roster.json', 'Release-Notes.json'):
+            self.write_zip((name, json.dumps(notes).encode()))
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                b.inspect_archive(self.archive)
+        invalid = [
+            {**notes, 'students': []}, {'schemaVersion': True, 'releases': []},
+            {**notes, 'releases': []}, {**notes, 'releases': notes['releases'] * 2},
+            {'schemaVersion': 1, 'releases': [{'tag': 'rc.28', 'changes': ['Changed']}]},
+            {'schemaVersion': 1, 'releases': [{'tag': 'v0.1.0-rc.28', 'changes': ['x' * 501]}]},
+            {'schemaVersion': 1, 'releases': [{'tag': 'v0.1.0-rc.28', 'changes': ['private\nrecord']}]},
+            {'schemaVersion': 1, 'releases': [{'tag': 'v0.1.0-rc.28', 'changes': ['/Users/gullo/private']}]},
+        ]
+        for value in invalid:
+            self.write_zip(('release-notes.json', json.dumps(value).encode()))
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                b.inspect_archive(self.archive)
+        self.write_zip(('release-notes.json', b' ' * (64 * 1024 + 1)))
+        with self.assertRaisesRegex(ValueError, '64 KiB'):
+            b.inspect_archive(self.archive)
+
     def test_no_index_base_path_and_runtime_required(self):
         original = dict(self.files)
         for change in ('noindex', '/mr-gullo-classroom/assets/', 'engine'):
