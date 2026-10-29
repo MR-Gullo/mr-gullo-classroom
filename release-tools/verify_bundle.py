@@ -16,6 +16,11 @@ BASE = "/mr-gullo-classroom/"
 REPO = "MR-Gullo/mr-gullo-classroom"
 QA = ("commonTasks", "keyboardUndo", "importExport", "backupRestore",
       "offlineRestart", "updateWithExistingData", "previousVersionReadsUpdatedData")
+# Pinned public OFL font. Do not allow arbitrary files under a font extension.
+STIX_FONT = r"assets/STIXTwoMath-Regular-[A-Za-z0-9_-]+\.ttf"
+STIX_FONT_SHA256 = "562551b15b836e6e01d1b7350909baf3c8c8d83260c1190fbf4544333e6936de"
+STIX_LICENSE = "font-licenses/STIXTwoMath-OFL.txt"
+STIX_LICENSE_SHA256 = "0c8825913b60d858aacdb33c4ca6660a7d64b0d6464702efbb19313f5765861a"
 
 
 def require(ok, message):
@@ -104,6 +109,8 @@ def inspect_archive(archive):
             allowed = (name in root_names
                        or re.fullmatch(r"workbox-[A-Za-z0-9_-]+\.js", name)
                        or re.fullmatch(r"assets/[A-Za-z0-9._-]+\.(js|mjs|css|wasm)", name)
+                       or re.fullmatch(STIX_FONT, name)
+                       or name == STIX_LICENSE
                        or re.fullmatch(r"icons/(192x192|512x512)\.png", name)
                        or re.fullmatch(r"ocr/(LICENSE-[A-Za-z0-9._-]+\.txt|[A-Za-z0-9._-]+\.js|lang/eng\.traineddata\.gz)", name))
             require(allowed, "Unexpected file in app archive: " + name)
@@ -118,6 +125,13 @@ def inspect_archive(archive):
                 require(b"/Users/gullo/" not in data and b"AUDIT-NEW" not in data,
                         "Private path or audit marker in archive")
             files[name] = data
+    font_names = [name for name in files if re.fullmatch(STIX_FONT, name)]
+    if font_names or STIX_LICENSE in files:
+        require(len(font_names) == 1 and STIX_LICENSE in files,
+                "Bundled math font requires its matching public license")
+        require(digest(files[font_names[0]]) == STIX_FONT_SHA256
+                and digest(files[STIX_LICENSE]) == STIX_LICENSE_SHA256,
+                "Bundled math font or license differs from the pinned public asset")
     require({"index.html", "sw.js", "manifest.webmanifest", "icons/192x192.png",
              "icons/512x512.png", "third-party-notices.txt"} <= files.keys(),
             "Required PWA files are missing")

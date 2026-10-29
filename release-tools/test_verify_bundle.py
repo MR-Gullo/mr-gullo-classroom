@@ -5,6 +5,7 @@ import json
 import stat
 import tempfile
 import unittest
+from unittest.mock import patch
 import zipfile
 from pathlib import Path
 
@@ -83,6 +84,36 @@ class ReleaseTests(unittest.TestCase):
         self.write_zip((link, b'../../outside'))
         with self.assertRaisesRegex(ValueError, 'link'):
             b.inspect_archive(self.archive)
+
+    def test_only_pinned_public_math_font_and_license_are_allowed(self):
+        font_name = 'assets/STIXTwoMath-Regular-fixture.ttf'
+        # The distribution repository has built files only, not private source assets.
+        font, license_data = b'reviewed public font fixture', b'reviewed OFL fixture'
+        for field, value in (('STIX_FONT_SHA256', b.digest(font)),
+                             ('STIX_LICENSE_SHA256', b.digest(license_data))):
+            pin = patch.object(b, field, value)
+            pin.start()
+            self.addCleanup(pin.stop)
+        self.files[font_name] = font
+        self.files[b.STIX_LICENSE] = license_data
+        self.write_zip()
+        self.assertIn(font_name, b.inspect_archive(self.archive))
+        for name in (font_name, b.STIX_LICENSE):
+            original = self.files[name]
+            self.files[name] = b'not the reviewed public font or license'
+            self.write_zip()
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, 'pinned public asset'):
+                b.inspect_archive(self.archive)
+            self.files[name] = original
+        del self.files[b.STIX_LICENSE]
+        self.write_zip()
+        with self.assertRaisesRegex(ValueError, 'matching public license'):
+            b.inspect_archive(self.archive)
+        del self.files[font_name]
+        for name in ('assets/private.ttf', 'font-licenses/records.txt'):
+            self.write_zip((name, b'private'))
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, 'Unexpected file'):
+                b.inspect_archive(self.archive)
 
     def test_only_bounded_public_release_notes_json_is_allowed(self):
         notes = {'schemaVersion': 1, 'releases': [
